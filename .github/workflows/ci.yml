@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # The API tests extract real frames from clips they encode with ffmpeg;
+      # without it they skip.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Lint the chart
+        run: helm lint charts/framegrab --set 'libraries.movies={/library/movies}'
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t framegrab .
+      # The filters and encoder the image relies on are in its ffmpeg.
+      - run: >-
+          docker run --rm --entrypoint sh framegrab -c
+          'ffmpeg -hide_banner -filters | grep -q " zscale " &&
+          ffmpeg -hide_banner -filters | grep -q " tonemap " &&
+          ffmpeg -hide_banner -encoders | grep -q " libwebp "'

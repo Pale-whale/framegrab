@@ -1,0 +1,75 @@
+image:
+  repository: ghcr.io/pale-whale/framegrab
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Library folders inside the container, laid out the Jellyfin or Plex way.
+# Mount them with `volumes` and `volumeMounts` below.
+libraries:
+  movies: []
+  #  - /library/movies
+  shows: []
+  #  - /library/tv
+
+# The library, read-only. For example a PersistentVolumeClaim shared with
+# Jellyfin:
+#   volumes:
+#     - name: library
+#       persistentVolumeClaim:
+#         claimName: media
+#         readOnly: true
+#   volumeMounts:
+#     - name: library
+#       mountPath: /library
+#       readOnly: true
+volumes: []
+volumeMounts: []
+
+config:
+  # How often the library is scanned again; "0" scans only at start and on
+  # POST /v1/rescan.
+  scanInterval: 1h
+  # ffmpeg processes at once, across all requests. A 4K HEVC frame takes
+  # about one core for under a second, and a few hundred MiB.
+  concurrency: 2
+  maxFrames: 32
+  frameTimeout: 60s
+
+# The user must be able to read the library. No fsGroup by default: on a
+# large volume Kubernetes would change the group of every file at each start.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 2Gi
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls: []
+
+env: []
+nodeSelector: {}
+tolerations: []
+affinity: {}

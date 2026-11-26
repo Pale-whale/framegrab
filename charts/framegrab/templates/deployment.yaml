@@ -1,0 +1,88 @@
+{{- if not (or .Values.libraries.movies .Values.libraries.shows) }}
+{{- fail "set libraries.movies and/or libraries.shows" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "framegrab.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "framegrab.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "framegrab.selector" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: framegrab
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: FRAMEGRAB_LISTEN
+              value: ":8080"
+            - name: FRAMEGRAB_MOVIES
+              value: {{ join "," .Values.libraries.movies | quote }}
+            - name: FRAMEGRAB_SHOWS
+              value: {{ join "," .Values.libraries.shows | quote }}
+            - name: FRAMEGRAB_SCAN_INTERVAL
+              value: {{ .Values.config.scanInterval | quote }}
+            - name: FRAMEGRAB_CONCURRENCY
+              value: {{ .Values.config.concurrency | quote }}
+            - name: FRAMEGRAB_MAX_FRAMES
+              value: {{ .Values.config.maxFrames | quote }}
+            - name: FRAMEGRAB_FRAME_TIMEOUT
+              value: {{ .Values.config.frameTimeout | quote }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          # Ready once the first scan of the library has finished.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            # ffmpeg needs nothing written, but a writable /tmp costs nothing.
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

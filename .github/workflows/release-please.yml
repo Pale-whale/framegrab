@@ -1,0 +1,69 @@
+name: release-please
+
+# release-please keeps a release pull request up to date with the pending
+# changelog and version bump; merging it cuts the release and runs publish.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/framegrab
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      # The tag rather than main: what is published is exactly what was released.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          printf '%s' "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+
+      # GHCR wants lowercase names; the owner is Pale-whale.
+      - name: Build and push the image
+        run: |
+          IMAGE="${IMAGE,,}"
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+
+      # The chart's image tag defaults to its appVersion, which release-please
+      # bumps with the version: one number pins both.
+      - name: Package and push the Helm chart
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          helm package charts/framegrab
+          helm push "framegrab-$VERSION.tgz" "oci://ghcr.io/${OWNER,,}/charts"

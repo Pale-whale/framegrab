@@ -1,0 +1,8 @@
+apiVersion: v2
+name: framegrab
+description: An API that extracts frames, exact or random, from the films and series of a Jellyfin or Plex library
+type: application
+home: https://github.com/Pale-whale/framegrab
+# Both versions are bumped by release-please; the image tag follows appVersion.
+version: 0.1.0 # x-release-please-version
+appVersion: "v0.1.0" # x-release-please-version
